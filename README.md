@@ -15,20 +15,20 @@ First, add `bevy_outline` as a dependency into your `Cargo.toml`:
 
 ```toml
 [dependencies]
-bevy_outline = "0.1"
+bevy_outline = "0.3"
 ```
 
-Second, add `OutlinePlugin` into your app add set `Msaa` to a reasonable value:
+Second, add `OutlinePlugin` into your app:
 
 ```rust, norun
 App::new()
-    .insert_resource(Msaa { samples: 4})
 ... ...
     .add_plugin(OutlinePlugin)
 ... ...
 ```
 
-Third, use `OutlineMaterial` as a mesh material:
+Third, use `OutlineMaterial` as a `MeshMaterial3d`, and use the marker component `OutlineRendered`:
+
 ```rust, norun
 fn setup(
     ...
@@ -36,17 +36,17 @@ fn setup(
     ...
 ) {
     ...
-    commands
-        .spawn_bundle(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Cube { ..default() })),
-            material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
-            transform: Transform::from_translation(translation),
-            ..default()
-        })
-        .insert(outlines.add(OutlineMaterial {
-            width: 5.,
-            color: Color::rgba(0.2, 0.3, 0.4, 1.0),
-        }));
+    let outline_black = outlines.add(OutlineMaterial {
+        width: 5.,
+        color: Color::linear_rgba(0.0, 0.0, 0.0, 1.0).into(),
+    });
+    commands.spawn((
+        Mesh3d(meshes.add(Mesh::from(Cuboid::default()))),
+        MeshMaterial3d(materials.add(Color::linear_rgb(0.8, 0.7, 0.8))),
+        Transform::from_xyz(2.0, 0.5, 0.0),
+        OutlineRendered,
+        MeshMaterial3d(outline_black.clone()),
+    ));
     ...
 }
 ```
@@ -70,7 +70,7 @@ See [example folder](https://github.com/YoshieraHuang/bevy_outline/tree/v0.1/exa
 
 - [x] ~~the width of outliner seems not to be uniform.~~
 - [x] ~~outline of built-in torus seems weird (algorithm is wrong and will be fixed in 0.8)~~
-- [ ] Pan + Orbit camera in example does not work with `main` branch
+- [x] ~~Pan + Orbit camera in example does not work with `main` branch~~
 
 # Bevy Version Support
 
@@ -78,7 +78,7 @@ I intend to track the `main` branch of Bevy. PRs supporting this are welcome!
 
 |bevy|bevy_outline|
 |---|---|
-|0.7|0.1|
+|0.15.3|0.1|
 
 # License
 
