@@ -16,10 +16,10 @@ uuid = "1.12.0"
 
 [features]
 default = []
-picking = []
+picking = ["bevy/bevy_picking", "bevy/bevy_mesh_picking_backend"]
 
 [dev-dependencies]
-bevy = { version = "0.15.3", features = ["dynamic_linking"] }
+bevy = { version = "0.15.3", features = ["dynamic_linking", "bevy_gltf"] }
 
 [[example]]
 name = "scene"

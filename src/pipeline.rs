@@ -27,7 +27,7 @@ use bevy::{
 };
 
 use crate::{
-    DoubleReciprocalWindowSizeUniform, OutlineRendered, OutlineMaterial, PreparedOutlineMaterial,
+    DoubleReciprocalWindowSizeUniform, OutlineMaterial, OutlineRendered, PreparedOutlineMaterial,
     SetWindowSizeBindGroup, ATTRIBUTE_OUTLINE_NORMAL,
 };
 
@@ -243,8 +243,8 @@ pub(crate) fn queue_outlines(
                 continue;
             };
 
-            let mesh_key =
-                view_key | MeshPipelineKey::from_primitive_topology(mesh.primitive_topology());
+            let mesh_key = view_key
+                | MeshPipelineKey::from_primitive_topology(mesh.primitive_topology());
 
             let pipeline_id = match pipelines.specialize(
                 &pipeline_cache,
@@ -258,7 +258,7 @@ pub(crate) fn queue_outlines(
                     return;
                 }
             };
-            
+
             mesh_instance
                 .material_bind_group_id
                 .set(material.get_bind_group_id());

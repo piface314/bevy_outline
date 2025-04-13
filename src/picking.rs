@@ -1,47 +1,22 @@
 use std::ops::Deref;
 
-use bevy::{
-    app::PluginGroupBuilder,
-    ecs::{schedule::ShouldRun, system::EntityCommands},
-    prelude::{
-        App, Changed, Commands, CoreStage, Deref, Entity, Handle, Or, Plugin, PluginGroup, Query,
-        Res, SystemSet,
-    },
-    ui::Interaction,
-};
+use bevy::{ecs::system::Resource, prelude::*};
 
-use bevy_mod_picking::{
-    InteractablePickingPlugin, PausedForBlockers, PickingPlugin, PickingPluginsState,
-    PickingSystem, Selection,
-};
-
-use crate::{OutlineMaterial, OutlinePlugin};
-
-/// Alternative to the `bevy_mod_picking`'s `DefaultPickingPlugins`.
-/// Object get outlined instead of changing materials when hovered, clicked or selected.
-pub struct DefaultPickingPlugins;
-impl PluginGroup for DefaultPickingPlugins {
-    fn build(&mut self, group: &mut PluginGroupBuilder) {
-        group.add(PickingPlugin);
-        group.add(InteractablePickingPlugin);
-        group.add(OutlinePlugin);
-        group.add(OutlinePickingPlugin);
-    }
-}
+use crate::{OutlineMaterial, OutlineRendered};
 
 /// `OutlineMaterial` handle resource used when object is hovered.
 /// If this resource does not exist in world, no outline will show.
-#[derive(Deref)]
+#[derive(Deref, Resource)]
 pub struct HoverOutline(pub Handle<OutlineMaterial>);
 
 /// `OutlineMaterial` handle resource used when object is selected.
 /// If this resource does not exist in world, no outline will show.
-#[derive(Deref)]
+#[derive(Deref, Resource)]
 pub struct SelectedOutline(pub Handle<OutlineMaterial>);
 
 /// `OutlineMaterial` handle resource used when object is pressed or clicked.
 /// If this resource does not exist in world, no outline will show.
-#[derive(Deref)]
+#[derive(Deref, Resource)]
 pub struct PressedOutline(pub Handle<OutlineMaterial>);
 
 /// Outline picking plugin as an alternative to `HighlightablePickingPlugin` in `bevy_mod_picking`
@@ -49,83 +24,46 @@ pub struct OutlinePickingPlugin;
 
 impl Plugin for OutlinePickingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_system_set_to_stage(
-            CoreStage::PreUpdate,
-            SystemSet::new()
-                .with_run_criteria(|state: Res<PickingPluginsState>| {
-                    if state.enable_highlighting {
-                        ShouldRun::Yes
-                    } else {
-                        ShouldRun::No
-                    }
-                })
-                .with_system(
-                    mesh_highlighting
-                        .label(PickingSystem::Highlighting)
-                        .before(PickingSystem::Events),
-                ),
-        );
+        app.add_plugins(MeshPickingPlugin)
+            .add_observer(update_material_on::<Pointer<Over>, HoverOutline>)
+            .add_observer(clear_material_on::<Pointer<Out>>)
+            .add_observer(update_material_on::<Pointer<Down>, PressedOutline>)
+            .add_observer(update_material_on::<Pointer<Up>, HoverOutline>);
     }
 }
 
-/// Similiar to the `mesh_highlighting` system in `bevy_mod_picking`
-#[allow(clippy::type_complexity)]
-fn mesh_highlighting(
-    paused: Option<Res<PausedForBlockers>>,
+fn update_material_on<E, T>(
+    trigger: Trigger<E>,
+    outline: Option<Res<T>>,
     mut commands: Commands,
-    hover_outline: Option<Res<HoverOutline>>,
-    pressed_outline: Option<Res<PressedOutline>>,
-    selected_outline: Option<Res<SelectedOutline>>,
-    mut interaction_query: Query<
-        (Entity, &Interaction, Option<&Selection>),
-        Or<(Changed<Interaction>, Changed<Selection>)>,
-    >,
-) {
-    if let Some(paused) = paused {
-        if paused.is_paused() {
-            for (ent, _, selection) in interaction_query.iter_mut() {
-                if let Some(selection) = selection {
-                    let mut entity_commands = commands.entity(ent);
-                    if selection.selected() {
-                        set_outline(&mut entity_commands, &selected_outline);
-                        continue;
-                    }
-                    entity_commands.remove::<Handle<OutlineMaterial>>();
-                }
-            }
-            return;
-        }
-    }
-    for (ent, interaction, selection) in interaction_query.iter_mut() {
-        let mut entity_commands = commands.entity(ent);
-        match *interaction {
-            Interaction::Clicked => {
-                set_outline(&mut entity_commands, &pressed_outline);
-            }
-            Interaction::Hovered => {
-                set_outline(&mut entity_commands, &hover_outline);
-            }
-            Interaction::None => {
-                if let Some(selection) = selection {
-                    if selection.selected() {
-                        set_outline(&mut entity_commands, &selected_outline);
-                        continue;
-                    }
-                }
-                entity_commands.remove::<Handle<OutlineMaterial>>();
-            }
-        };
+    q_outline: Query<Entity, With<OutlineRendered>>,
+) where
+    E: Event,
+    T: Deref<Target = Handle<OutlineMaterial>> + Resource + Send + Sync + 'static,
+{
+    let Ok(entity) = q_outline.get(trigger.entity()) else {
+        return;
+    };
+    let Some(mut entity_commands) = commands.get_entity(entity) else {
+        return;
+    };
+    if let Some(material) = outline.map(|res| res.clone()) {
+        entity_commands.insert(MeshMaterial3d(material));
     }
 }
 
-#[inline]
-fn set_outline<T: Deref<Target = Handle<OutlineMaterial>> + Send + Sync + 'static>(
-    entity_commands: &mut EntityCommands,
-    outline: &Option<Res<T>>,
-) {
-    if let Some(outline) = outline.as_ref() {
-        entity_commands.insert((*outline).clone());
-    } else {
-        entity_commands.remove::<Handle<OutlineMaterial>>();
-    }
+fn clear_material_on<E>(
+    trigger: Trigger<E>,
+    mut commands: Commands,
+    q_outline: Query<Entity, With<OutlineRendered>>,
+) where
+    E: Event,
+{
+    let Ok(entity) = q_outline.get(trigger.entity()) else {
+        return;
+    };
+    let Some(mut entity_commands) = commands.get_entity(entity) else {
+        return;
+    };
+    entity_commands.remove::<MeshMaterial3d<OutlineMaterial>>();
 }

@@ -58,7 +58,7 @@ Note that the unit of `width` attribute of `OutlineMaterial` is **pixel**.
 The initial motivation of this crate is to enable outlining instead of material substitution when a mesh is picked by `bevy_mod_picking`.
 Use this functionality is very simple:
 - enable the `picking` feature of this crate.
-- add `picking::DefaultPickingPlugins` in **this** crate to your application.
+- add `OutlinePlugin` and `OutlinePickingPlugin` from **this** crate to your application.
 - set the associated resource like `HoverOutline`, `SelectedOutline` and `PressedOutline` to enable the outlining when hovered, selected and pressed.
 See [this example](https://github.com/YoshieraHuang/bevy_outline/tree/v0.1/examples/picking.rs) for demo.
 

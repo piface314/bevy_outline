@@ -2,10 +2,11 @@ use bevy::{
     core_pipeline::core_3d::Camera3d,
     input::mouse::{MouseMotion, MouseWheel},
     prelude::*,
+    scene::SceneInstanceReady,
     window::PrimaryWindow,
 };
 // use bevy_obj::ObjPlugin;
-use bevy_outline::{OutlineRendered, OutlineMaterial, OutlinePlugin};
+use bevy_outline::{OutlineMaterial, OutlinePlugin, OutlineRendered};
 
 fn main() {
     println!(
@@ -24,7 +25,7 @@ fn main() {
 
 fn setup(
     mut commands: Commands,
-    // asset_server: Res<AssetServer>,
+    asset_server: Res<AssetServer>,
     mut ambient_light: ResMut<AmbientLight>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -32,12 +33,12 @@ fn setup(
 ) {
     let outline_black = outlines.add(OutlineMaterial {
         width: 5.,
-        color: Color::linear_rgba(0.0, 0.0, 0.0, 1.0).into(),
+        color: Color::linear_rgb(0.0, 0.0, 0.0).into(),
     });
 
     let outline_white = outlines.add(OutlineMaterial {
         width: 3.,
-        color: Color::linear_rgba(1.0, 1.0, 1.0, 1.0).into(),
+        color: Color::linear_rgb(1.0, 1.0, 1.0).into(),
     });
 
     // Cube
@@ -68,13 +69,34 @@ fn setup(
     ));
 
     // Monkey head
-    // commands.spawn((
-    //     Mesh3d(asset_server.load("head.obj")),
-    //     MeshMaterial3d(materials.add(Color::linear_rgb(0.7, 0.2, 0.5))),
-    //     Transform::from_xyz(-6.0, 0.5, 0.0),
-    //     Outline3d,
-    //     MeshMaterial3d(outline_black.clone()),
-    // ));
+    commands
+        .spawn(SceneRoot(
+            asset_server.load(GltfAssetLabel::Scene(0).from_asset("head.glb")),
+        ))
+        .observe(
+            |trigger: Trigger<SceneInstanceReady>,
+             q_children: Query<&Children>,
+             q_mesh: Query<Entity, With<Mesh3d>>,
+             mut materials: ResMut<Assets<StandardMaterial>>,
+             mut outlines: ResMut<Assets<OutlineMaterial>>,
+             mut commands: Commands| {
+                if let Some(entity) = q_children
+                    .iter_descendants(trigger.entity())
+                    .filter(|e| q_mesh.get(*e).is_ok())
+                    .next()
+                {
+                    commands.entity(entity).insert((
+                        MeshMaterial3d(materials.add(Color::linear_rgb(0.7, 0.2, 0.5))),
+                        Transform::from_xyz(-6.0, 0.5, 0.0),
+                        OutlineRendered,
+                        MeshMaterial3d(outlines.add(OutlineMaterial {
+                            width: 5.,
+                            color: Color::linear_rgb(0.7, 0.0, 0.9).into(),
+                        })),
+                    ));
+                }
+            },
+        );
 
     // Light
     ambient_light.brightness = 100.0;
