@@ -1,10 +1,10 @@
 use std::hash::Hash;
 
 use bevy::{
-    math::Vec3A,
+    math::{FloatOrd, Vec3A},
     prelude::{Deref, DerefMut},
     render::mesh::{Mesh, VertexAttributeValues},
-    utils::{FloatOrd, HashMap},
+    utils::HashMap,
 };
 
 /// An ordered float3 array which implements Eq and Hash

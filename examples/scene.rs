@@ -1,10 +1,11 @@
 use bevy::{
-    core_pipeline::core_3d::Camera3dBundle,
+    core_pipeline::core_3d::Camera3d,
     input::mouse::{MouseMotion, MouseWheel},
     prelude::*,
+    window::PrimaryWindow,
 };
 // use bevy_obj::ObjPlugin;
-use bevy_outline::{OutlineMaterial, OutlinePlugin};
+use bevy_outline::{OutlineRendered, OutlineMaterial, OutlinePlugin};
 
 fn main() {
     println!(
@@ -14,13 +15,10 @@ fn main() {
     Mouse Wheel: Zoom."
     );
     App::new()
-        .insert_resource(Msaa { samples: 4 })
         .add_plugins(DefaultPlugins)
-        // bevy_obj does not track the main branch
-        // .add_plugin(ObjPlugin)
-        .add_plugin(OutlinePlugin)
-        .add_system(pan_orbit_camera)
-        .add_startup_system(setup)
+        .add_plugins(OutlinePlugin)
+        .add_systems(Update, (pan_orbit_camera, rotate))
+        .add_systems(Startup, setup)
         .run();
 }
 
@@ -34,70 +32,73 @@ fn setup(
 ) {
     let outline_black = outlines.add(OutlineMaterial {
         width: 5.,
-        color: Color::rgba(0.0, 0.0, 0.0, 1.0),
+        color: Color::linear_rgba(0.0, 0.0, 0.0, 1.0).into(),
     });
 
     let outline_white = outlines.add(OutlineMaterial {
         width: 3.,
-        color: Color::rgba(1.0, 1.0, 1.0, 1.0),
+        color: Color::linear_rgba(1.0, 1.0, 1.0, 1.0).into(),
     });
 
     // Cube
-    commands
-        .spawn_bundle(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Cube::default())),
-            material: materials.add(Color::rgb(0.2, 0.7, 0.8).into()),
-            transform: Transform::from_xyz(2.0, 0.5, 0.0),
-            ..default()
-        })
-        .insert(outline_black.clone());
+    commands.spawn((
+        Mesh3d(meshes.add(Mesh::from(Cuboid::default()))),
+        MeshMaterial3d(materials.add(Color::linear_rgb(0.8, 0.7, 0.8))),
+        Transform::from_xyz(2.0, 0.5, 0.0),
+        OutlineRendered,
+        MeshMaterial3d(outline_black.clone()),
+    ));
 
     // Sphere
-    commands
-        .spawn_bundle(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Icosphere::default())),
-            material: materials.add(Color::rgb(0.3, 0.2, 0.1).into()),
-            transform: Transform::from_xyz(-2.0, 0.5, 0.0),
-            ..default()
-        })
-        .insert(outline_white.clone());
+    commands.spawn((
+        Mesh3d(meshes.add(Mesh::from(Sphere::default()))),
+        MeshMaterial3d(materials.add(Color::linear_rgb(0.3, 0.2, 0.1))),
+        Transform::from_xyz(-2.0, 0.5, 0.0),
+        OutlineRendered,
+        MeshMaterial3d(outline_white.clone()),
+    ));
 
     // Torus
-    commands
-        .spawn_bundle(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Torus::default())),
-            material: materials.add(Color::rgb(0.2, 0.2, 0.5).into()),
-            transform: Transform::from_xyz(6.0, 0.5, 0.0),
-            ..default()
-        })
-        .insert(outline_white.clone());
+    commands.spawn((
+        Mesh3d(meshes.add(Mesh::from(Torus::default()))),
+        MeshMaterial3d(materials.add(Color::linear_rgb(0.2, 0.2, 0.5))),
+        Transform::from_xyz(6.0, 0.5, 0.0),
+        OutlineRendered,
+        MeshMaterial3d(outline_white.clone()),
+    ));
 
     // Monkey head
-    // commands
-    // .spawn_bundle(PbrBundle {
-    //     mesh: asset_server.load("head.obj"),
-    //     material: materials.add(Color::rgb(0.7, 0.2, 0.5).into()),
-    //     transform: Transform::from_xyz(-6.0, 0.5, 0.0),
-    //     ..default()
-    // })
-    // .insert(outline_black.clone());
+    // commands.spawn((
+    //     Mesh3d(asset_server.load("head.obj")),
+    //     MeshMaterial3d(materials.add(Color::linear_rgb(0.7, 0.2, 0.5))),
+    //     Transform::from_xyz(-6.0, 0.5, 0.0),
+    //     Outline3d,
+    //     MeshMaterial3d(outline_black.clone()),
+    // ));
 
     // Light
-    ambient_light.brightness = 1.0;
+    ambient_light.brightness = 100.0;
+
+    commands.spawn((
+        PointLight {
+            shadows_enabled: true,
+            intensity: 2_000_000.0,
+            ..default()
+        },
+        Transform::from_xyz(4.0, 8.0, 4.0),
+    ));
 
     // camera
     let camera_translation = Vec3::new(0.0, 6.0, 12.0);
     let radius = camera_translation.length();
-    commands
-        .spawn_bundle(Camera3dBundle {
-            transform: Transform::from_translation(camera_translation)
-                .looking_at(Vec3::ZERO, Vec3::Y),
-            ..default()
-        })
-        .insert(PanOrbitCamera {
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_translation(camera_translation).looking_at(Vec3::ZERO, Vec3::Y),
+        PanOrbitCamera {
             radius,
             ..Default::default()
-        });
+        },
+    ));
 }
 
 /// Tags an entity as capable of panning and orbiting.
@@ -121,11 +122,11 @@ impl Default for PanOrbitCamera {
 
 /// Pan the camera with middle mouse click, zoom with scroll wheel, orbit with right mouse click.
 fn pan_orbit_camera(
-    windows: Res<Windows>,
+    q_window: Query<&Window, With<PrimaryWindow>>,
     mut ev_motion: EventReader<MouseMotion>,
     mut ev_scroll: EventReader<MouseWheel>,
-    input_mouse: Res<Input<MouseButton>>,
-    mut query: Query<(&mut PanOrbitCamera, &mut Transform, &PerspectiveProjection)>,
+    input_mouse: Res<ButtonInput<MouseButton>>,
+    mut query: Query<(&mut PanOrbitCamera, &mut Transform, &Projection)>,
 ) {
     // change input mapping for orbit and panning here
     let orbit_button = MouseButton::Right;
@@ -137,16 +138,16 @@ fn pan_orbit_camera(
     let mut orbit_button_changed = false;
 
     if input_mouse.pressed(orbit_button) {
-        for ev in ev_motion.iter() {
+        for ev in ev_motion.read() {
             rotation_move += ev.delta;
         }
     } else if input_mouse.pressed(pan_button) {
         // Pan only if we're not rotating at the moment
-        for ev in ev_motion.iter() {
+        for ev in ev_motion.read() {
             pan += ev.delta;
         }
     }
-    for ev in ev_scroll.iter() {
+    for ev in ev_scroll.read() {
         scroll += ev.y;
     }
     if input_mouse.just_released(orbit_button) || input_mouse.just_pressed(orbit_button) {
@@ -154,6 +155,9 @@ fn pan_orbit_camera(
     }
 
     for (mut pan_orbit, mut transform, projection) in query.iter_mut() {
+        let Projection::Perspective(projection) = projection else {
+            continue;
+        };
         if orbit_button_changed {
             // only check for upside down when orbiting started or ended this frame
             // if the camera is "upside" down, panning horizontally would be inverted, so invert the input to make it correct
@@ -164,7 +168,9 @@ fn pan_orbit_camera(
         let mut any = false;
         if rotation_move.length_squared() > 0.0 {
             any = true;
-            let window = get_primary_window_size(&windows);
+            let Ok(window) = q_window.get_single().map(|w| w.size()) else {
+                continue;
+            };
             let delta_x = {
                 let delta = rotation_move.x / window.x * std::f32::consts::PI * 2.0;
                 if pan_orbit.upside_down {
@@ -181,7 +187,9 @@ fn pan_orbit_camera(
         } else if pan.length_squared() > 0.0 {
             any = true;
             // make panning distance independent of resolution and FOV,
-            let window = get_primary_window_size(&windows);
+            let Ok(window) = q_window.get_single().map(|w| w.size()) else {
+                continue;
+            };
             pan *= Vec2::new(projection.fov * projection.aspect_ratio, projection.fov) / window;
             // translate by local axes
             let right = transform.rotation * Vec3::X * -pan.x;
@@ -207,8 +215,8 @@ fn pan_orbit_camera(
     }
 }
 
-fn get_primary_window_size(windows: &Res<Windows>) -> Vec2 {
-    let window = windows.get_primary().unwrap();
-    let window = Vec2::new(window.width() as f32, window.height() as f32);
-    window
+fn rotate(time: Res<Time>, mut q_transform: Query<&mut Transform, With<OutlineRendered>>) {
+    for mut t in q_transform.iter_mut() {
+        t.rotate(Quat::from_rotation_x(time.delta_secs()));
+    }
 }

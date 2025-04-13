@@ -1,16 +1,21 @@
 use bevy::{
-    core::cast_slice,
-    ecs::system::{lifetimeless::SRes, SystemParamItem},
+    ecs::{
+        change_detection::DetectChanges,
+        query::{ROQueryItem, With},
+        system::{lifetimeless::SRes, Query, SystemParamItem},
+        world::Ref,
+    },
     math::Vec2,
-    prelude::{Commands, Entity, EventReader, Res, ResMut, Resource},
+    prelude::{Commands, Res, ResMut, Resource},
     render::{
-        render_phase::{EntityRenderCommand, RenderCommandResult, TrackedRenderPass},
-        render_resource::{BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, ShaderType},
+        render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
+        render_resource::{BindGroup, BindGroupEntry, Buffer, ShaderType},
         renderer::{RenderDevice, RenderQueue},
         Extract,
     },
-    window::WindowResized,
+    window::{PrimaryWindow, Window},
 };
+use bytemuck::cast_slice;
 
 use crate::OutlinePipeline;
 
@@ -33,15 +38,17 @@ pub(crate) struct DoubleReciprocalWindowSizeMeta {
 
 pub(crate) fn extract_window_size(
     mut commands: Commands,
-    mut resized_events: Extract<EventReader<WindowResized>>,
+    q_window: Extract<Query<Ref<Window>, With<PrimaryWindow>>>,
 ) {
-    if let Some(size_change) = resized_events.iter().last() {
-        if size_change.id.is_primary() {
-            let width = size_change.width;
-            let height = size_change.height;
-            commands.insert_resource(ExtractedWindowSize { width, height });
-        }
+    let Ok(window) = q_window.get_single() else {
+        return;
+    };
+    if !window.is_changed() {
+        return;
     }
+    let width = window.width();
+    let height = window.height();
+    commands.insert_resource(ExtractedWindowSize { width, height });
 }
 
 pub(crate) fn prepare_window_size(
@@ -66,32 +73,34 @@ pub(crate) fn queue_window_size_bind_group(
     mut double_reciprocal_window_size_meta: ResMut<DoubleReciprocalWindowSizeMeta>,
     pipeline: Res<OutlinePipeline>,
 ) {
-    let bind_group = render_device.create_bind_group(&BindGroupDescriptor {
-        label: Some("window size bind group"),
-        layout: &pipeline.window_size_layout,
-        entries: &[BindGroupEntry {
+    let bind_group = render_device.create_bind_group(
+        Some("window size bind group"),
+        &pipeline.window_size_layout,
+        &[BindGroupEntry {
             binding: 0,
             resource: double_reciprocal_window_size_meta
                 .buffer
                 .as_entire_binding(),
         }],
-    });
+    );
     double_reciprocal_window_size_meta.bind_group = Some(bind_group);
 }
 
 pub(crate) struct SetWindowSizeBindGroup<const I: usize>;
-impl<const I: usize> EntityRenderCommand for SetWindowSizeBindGroup<I> {
+impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetWindowSizeBindGroup<I> {
     type Param = SRes<DoubleReciprocalWindowSizeMeta>;
+    type ItemQuery = ();
+    type ViewQuery = ();
 
     fn render<'w>(
-        _view: Entity,
-        _item: Entity,
-        window_size: SystemParamItem<'w, '_, Self::Param>,
+        _item: &P,
+        _view: ROQueryItem<'w, Self::ViewQuery>,
+        _entity: Option<ROQueryItem<'w, Self::ItemQuery>>,
+        param: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        let window_size_bind_group = window_size.into_inner().bind_group.as_ref().unwrap();
+        let window_size_bind_group = param.into_inner().bind_group.as_ref().unwrap();
         pass.set_bind_group(I, window_size_bind_group, &[]);
-
         RenderCommandResult::Success
     }
 }

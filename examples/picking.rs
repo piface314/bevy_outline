@@ -1,3 +1,4 @@
+/*
 use bevy::prelude::*;
 use bevy_mod_picking::{PickableBundle, PickingCameraBundle};
 // use bevy_obj::ObjPlugin;
@@ -95,3 +96,6 @@ fn setup(
         })
         .insert_bundle(PickingCameraBundle::default());
 }
+ */
+
+fn main() {}
